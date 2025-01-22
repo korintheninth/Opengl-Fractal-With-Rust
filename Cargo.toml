@@ -1,0 +1,11 @@
+[package]
+name = "fractal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = "0.30.8"
+glutin = { version = "0.32.2", features = ["wayland", "x11", "egl", "wgl"] }
+glow = "0.16.0"
+gl = "0.14.0"
+raw-window-handle = "0.6.0"
