@@ -9,3 +9,5 @@ glutin = { version = "0.32.2", features = ["wayland", "x11", "egl", "wgl"] }
 glow = "0.16.0"
 gl = "0.14.0"
 raw-window-handle = "0.6.0"
+tobj = "4.0.3"
+glam = "0.29.2"

@@ -62,7 +62,6 @@ impl RenderManager {
     pub fn new(window: &Window) -> Self {
         let template = ConfigTemplateBuilder::new()
             .with_alpha_size(8)
-            .with_transparency(true)
             .build();
 
         // Create display
@@ -155,8 +154,8 @@ impl RenderManager {
             gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 2 * std::mem::size_of::<f32>() as i32, 0);
             gl.enable_vertex_attrib_array(0);
 
-            let vertex_source = Self::load_shader("shaders/vertexshader.glsl");
-            let fragment_source = Self::load_shader("shaders/fragmentshader.glsl");
+            let vertex_source = Self::load_shader("shaders/fractalvertexshader.glsl");
+            let fragment_source = Self::load_shader("shaders/fractalfragmentshader.glsl");
             // Create shader program first
             let vertex_shader = Self::compile_shader(&gl, &vertex_source, glow::VERTEX_SHADER);
             let fragment_shader = Self::compile_shader(&gl, &fragment_source, glow::FRAGMENT_SHADER);
