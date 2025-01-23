@@ -1,5 +1,4 @@
 use glutin::{
-    self,
     config::ConfigTemplateBuilder,
     context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
     display::{Display, DisplayApiPreference},
@@ -12,7 +11,7 @@ use winit::window::Window;
 use std::ffi::CString;
 use std::fs;
 use std::path::Path;
-
+use glam::{Vec3, Mat4};
 
 pub struct RenderManager {
     gl: glow::Context,
@@ -21,9 +20,60 @@ pub struct RenderManager {
 	shader_program: glow::Program,
 	vao: glow::VertexArray,
 	start_time: std::time::Instant,
+    num_indices: i32,
 }
 
 impl RenderManager {
+
+    fn load_mesh(path: &str) -> (Vec<f32>, Vec<u32>) {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let obj_path = Path::new(manifest_dir).join("src").join(path);
+
+        let (models, _) = tobj::load_obj(&obj_path, &tobj::LoadOptions {
+            triangulate: true,
+            single_index: true,
+            ..Default::default()
+        })
+        .expect("Failed to load OBJ file");
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for model in models {
+            let mesh = &model.mesh;
+            
+            // Store vertices
+            for i in 0..mesh.positions.len() / 3 {
+                // Position
+                vertices.push(mesh.positions[i * 3]);
+                vertices.push(mesh.positions[i * 3 + 1]);
+                vertices.push(mesh.positions[i * 3 + 2]);
+                
+                // Normal
+                if !mesh.normals.is_empty() {
+                    vertices.push(mesh.normals[i * 3]);
+                    vertices.push(mesh.normals[i * 3 + 1]);
+                    vertices.push(mesh.normals[i * 3 + 2]);
+                } else {
+                    vertices.extend_from_slice(&[0.0, 0.0, 0.0]);
+                }
+                
+                // UV
+                if !mesh.texcoords.is_empty() {
+                    vertices.push(mesh.texcoords[i * 2]);
+                    vertices.push(mesh.texcoords[i * 2 + 1]);
+                } else {
+                    vertices.extend_from_slice(&[0.0, 0.0]);
+                }
+            }
+
+            // Store indices
+            indices.extend_from_slice(&mesh.indices);
+        }
+
+        (vertices, indices)
+    }
+
     fn load_shader(shader_path: &str) -> String {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let shader_path = Path::new(manifest_dir).join("src").join(shader_path);
@@ -127,35 +177,75 @@ impl RenderManager {
             })
         };
 
-		let vertices: [f32; 12] = [
-			-1.0, 1.0, // top left
-			-1.0, -1.0, // bottom left
-			1.0, -1.0, // bottom right
-			-1.0, 1.0, // top left
-			1.0, -1.0, // bottom right
-			1.0, 1.0, // top right
-		];
+        let (vertices, indices)  = Self::load_mesh("objs/monkey.obj");
+
 
         unsafe {
             let vao = gl.create_vertex_array().unwrap();
             let vbo = gl.create_buffer().unwrap();
+            let ebo = gl.create_buffer().unwrap();
             
             gl.bind_vertex_array(Some(vao));
+
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
             gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                std::slice::from_raw_parts(
-                    vertices.as_ptr() as *const u8,
-                    vertices.len() * std::mem::size_of::<f32>(),
-                ),
+                bytemuck::cast_slice(&vertices),
                 glow::STATIC_DRAW,
             );
 
-            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 2 * std::mem::size_of::<f32>() as i32, 0);
-            gl.enable_vertex_attrib_array(0);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+            gl.buffer_data_u8_slice(
+                glow::ELEMENT_ARRAY_BUFFER,
+                bytemuck::cast_slice(&indices),
+                glow::STATIC_DRAW,
+            );
 
-            let vertex_source = Self::load_shader("shaders/fractalvertexshader.glsl");
-            let fragment_source = Self::load_shader("shaders/fractalfragmentshader.glsl");
+            const POSITION_ATTRIB: u32 = 0;
+            const NORMAL_ATTRIB: u32 = 1;
+            const TEXCOORD_ATTRIB: u32 = 2;
+
+            const VERTEX_SIZE: usize = std::mem::size_of::<f32>();
+            const STRIDE: i32 = (8 * VERTEX_SIZE) as i32; // 3 pos + 3 normal + 2 uv = 8 floats
+
+            const POSITION_OFFSET: i32 = 0;
+            const NORMAL_OFFSET: i32 = (3 * VERTEX_SIZE) as i32;
+            const TEXCOORD_OFFSET: i32 = (6 * VERTEX_SIZE) as i32;
+
+            gl.vertex_attrib_pointer_f32(
+                POSITION_ATTRIB,
+                3,  // vec3
+                glow::FLOAT,
+                false,
+                STRIDE,
+                POSITION_OFFSET
+            );
+
+            gl.vertex_attrib_pointer_f32(
+                NORMAL_ATTRIB,
+                3,  // vec3
+                glow::FLOAT,
+                false,
+                STRIDE,
+                NORMAL_OFFSET
+            );
+
+            gl.vertex_attrib_pointer_f32(
+                TEXCOORD_ATTRIB,
+                2,  // vec2
+                glow::FLOAT,
+                false,
+                STRIDE,
+                TEXCOORD_OFFSET
+            );
+
+            // Don't forget to enable all attribute arrays
+            gl.enable_vertex_attrib_array(POSITION_ATTRIB);
+            gl.enable_vertex_attrib_array(NORMAL_ATTRIB);
+            gl.enable_vertex_attrib_array(TEXCOORD_ATTRIB);
+
+            let vertex_source = Self::load_shader("shaders/modelvertexshader.glsl");
+            let fragment_source = Self::load_shader("shaders/modelfragmentshader.glsl");
             // Create shader program first
             let vertex_shader = Self::compile_shader(&gl, &vertex_source, glow::VERTEX_SHADER);
             let fragment_shader = Self::compile_shader(&gl, &fragment_source, glow::FRAGMENT_SHADER);
@@ -169,48 +259,68 @@ impl RenderManager {
                 shader_program,
                 vao,
                 start_time: std::time::Instant::now(),
+                num_indices: indices.len() as i32,
             }
 		}
     }
 
     pub fn render(&self, size: (u32, u32), mouse: (f64, f64), scroll: f64) {
+       
+        let time = self.start_time.elapsed().as_secs_f32();
+        
+        let rotation = Mat4::from_rotation_y(time * 5.0); // Rotate around Y axis
+        let model_matrix = rotation;
+        let view_matrix = Mat4::look_at_rh(
+            Vec3::new(0.0, 0.0, 5.0), // Camera position
+            Vec3::new(0.0, 0.0, 0.0), // Look at point
+            Vec3::new(0.0, 1.0, 0.0), // Up vector
+        );
+        let projection_matrix = Mat4::perspective_rh(
+            45.0_f32.to_radians(),
+            size.0 as f32 / size.1 as f32,
+            0.1,
+            100.0,
+        );
         unsafe {
+            
+            let model_loc = self.gl.get_uniform_location(self.shader_program, "model");
+            let view_loc = self.gl.get_uniform_location(self.shader_program, "view");
+            let proj_loc = self.gl.get_uniform_location(self.shader_program, "projection");
+
+            self.gl.uniform_matrix_4_f32_slice(
+                model_loc.as_ref(),
+                false,
+                &model_matrix.to_cols_array(),
+            );
+            self.gl.uniform_matrix_4_f32_slice(
+                view_loc.as_ref(),
+                false,
+                &view_matrix.to_cols_array(),
+            );
+            self.gl.uniform_matrix_4_f32_slice(
+                proj_loc.as_ref(),
+                false,
+                &projection_matrix.to_cols_array(),
+            );
+
+            // Enable depth testing
+            self.gl.enable(glow::DEPTH_TEST);
+            self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
            
             self.gl.viewport(0, 0, size.0 as i32, size.1 as i32);
             
             self.gl.use_program(Some(self.shader_program));
-            
-            // Set time uniform
-            let time = self.start_time.elapsed().as_secs_f32();
-            let time_location = self.gl.get_uniform_location(self.shader_program, "u_time");
-            self.gl.uniform_1_f32(time_location.as_ref(), time);
-            
-            let resolution_location = self.gl.get_uniform_location(self.shader_program, "u_resolution");
-            self.gl.uniform_2_f32(
-                resolution_location.as_ref(),
-                size.0 as f32,
-                size.1 as f32,
-            );
 
-            let mouse_location = self.gl.get_uniform_location(self.shader_program, "u_mouse");
-            self.gl.uniform_2_f32(
-                mouse_location.as_ref(),
-                mouse.0 as f32,
-                mouse.1 as f32,
-            );
-
-            let scroll_location = self.gl.get_uniform_location(self.shader_program, "u_scroll");
-            self.gl.uniform_1_f32(
-                scroll_location.as_ref(),
-                scroll as f32
-            );
-
-            // Clear and draw
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
             
             self.gl.bind_vertex_array(Some(self.vao));
-            self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
+            self.gl.draw_elements(
+                glow::TRIANGLES,
+                self.num_indices,
+                glow::UNSIGNED_INT,
+                0,
+            );
             
             self.surface.swap_buffers(&self.context).unwrap();
         }

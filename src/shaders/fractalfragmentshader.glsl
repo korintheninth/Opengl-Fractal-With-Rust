@@ -1,4 +1,4 @@
-#version 400
+#version 300 es
 precision highp float;
 
 uniform vec2 u_resolution;
@@ -23,10 +23,10 @@ void main() {
     float ab2 = a * b * 2.0;
     int i;
 
-    const int maxIterations = 1000;
+    const int maxIterations = 5000;
 
     for (i = 0; i < maxIterations; i++) {
-        if (aa + bb > 16.0) break;
+        if (aa + bb > 4.0) break;
         b = ab2 + cb;
         a = aa - bb + ca;
         aa = a * a;
