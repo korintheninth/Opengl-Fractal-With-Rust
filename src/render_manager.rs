@@ -24,9 +24,22 @@ pub struct RenderManager {
 }
 
 impl RenderManager {
+    fn get_asset_path(relative_path: &str) -> PathBuf {
+        let base_dir = if cfg!(debug_assertions) {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        } else {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .to_path_buf()
+        };
+        
+        return base_dir.join(relative_path)
+    }
+
     fn load_shader(shader_path: &str) -> String {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let shader_path = Path::new(manifest_dir).join("src").join(shader_path);
+        let shader_path = Self::get_asset_path(shader_path);
         fs::read_to_string(&shader_path)
             .unwrap_or_else(|_| panic!("Failed to read shader file: {}", shader_path.display()))
     }
